@@ -1,3 +1,3 @@
 Basic QR encoder.
 
-go get [-u] rsc.io/qr
+go get [-u] github.com/kortschak/qr

@@ -3,14 +3,14 @@
 // license that can be found in the LICENSE file.
 
 // Package coding implements low-level QR coding details.
-package coding // import "rsc.io/qr/coding"
+package coding
 
 import (
 	"fmt"
 	"strconv"
 	"strings"
 
-	"rsc.io/qr/gf256"
+	"github.com/kortschak/qr/gf256"
 )
 
 // Field is the field for QR error correction.

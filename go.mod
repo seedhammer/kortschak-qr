@@ -1,1 +1,1 @@
-module rsc.io/qr
+module github.com/kortschak/qr
