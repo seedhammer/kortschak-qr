@@ -26,7 +26,32 @@ func TestPNG(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	gm := m.(*image.Gray)
+
+	testImage(t, c, m.(*image.Gray))
+}
+
+func TestImage(t *testing.T) {
+	c, err := Encode("hello, world", L)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	img := c.Image()
+	var buf bytes.Buffer
+	png.Encode(&buf, img)
+	if true {
+		ioutil.WriteFile("y.png", buf.Bytes(), 0666)
+	}
+	m, err := png.Decode(&buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	testImage(t, c, m.(*image.Gray))
+}
+
+func testImage(t *testing.T, c *Code, gm *image.Gray) {
+	t.Helper()
 
 	scale := c.Scale
 	siz := c.Size
