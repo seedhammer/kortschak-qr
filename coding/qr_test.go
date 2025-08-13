@@ -12,8 +12,8 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/kortschak/qr/gf256"
-	"github.com/kortschak/qr/libqrencode"
+	"github.com/seedhammer/kortschak-qr/gf256"
+	"github.com/seedhammer/kortschak-qr/libqrencode"
 )
 
 func test(t *testing.T, v Version, l Level, text ...Encoding) bool {

@@ -16,7 +16,7 @@ import (
 	"image"
 	"image/color"
 
-	"github.com/kortschak/qr/coding"
+	"github.com/seedhammer/kortschak-qr/coding"
 )
 
 // A Level denotes a QR error correction level.

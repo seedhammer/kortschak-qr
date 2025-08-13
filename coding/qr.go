@@ -14,7 +14,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/kortschak/qr/gf256"
+	"github.com/seedhammer/kortschak-qr/gf256"
 )
 
 // Field is the field for QR error correction.
