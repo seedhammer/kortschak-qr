@@ -840,56 +840,38 @@ func lplan(v Version, l Level, p *Plan) error {
 	p.CheckBytes = ne * nblock
 	p.Blocks = nblock
 
-	// Make data + checksum pixels.
-	data := make([]Pixel, dataBits)
-	for i := range data {
-		data[i] = Data.Pixel() | OffsetPixel(uint(i))
-	}
-	check := make([]Pixel, checkBits)
-	for i := range check {
-		check[i] = Check.Pixel() | OffsetPixel(uint(i+dataBits))
-	}
-
-	// Split into blocks.
-	dataList := make([][]Pixel, nblock)
-	checkList := make([][]Pixel, nblock)
-	for i := 0; i < nblock; i++ {
-		// The last few blocks have an extra data byte (8 pixels).
-		nd := nde
-		if i >= nblock-extra {
-			nd++
-		}
-		dataList[i], data = data[0:nd*8], data[nd*8:]
-		checkList[i], check = check[0:ne*8], check[ne*8:]
-	}
-	if len(data) != 0 || len(check) != 0 {
-		panic("data/check math")
-	}
-
-	// Build up bit sequence, taking first byte of each block,
-	// then second byte, and so on.  Then checksums.
-	// Capacity for the 7 remainder pixels appended below, so the
-	// append reuses this backing array instead of reallocating the
-	// full sequence.
-	bits := make([]Pixel, dataBits+checkBits, dataBits+checkBits+7)
-	dst := bits
-	for i := 0; i < nde+1; i++ {
-		for _, b := range dataList {
-			if i*8 < len(b) {
-				copy(dst, b[i*8:(i+1)*8])
-				dst = dst[8:]
+	// The data and checksum bytes go onto the grid byte-striped
+	// across the blocks: byte i of every block in turn, the last
+	// extra blocks one data byte longer, then the checksum bytes the
+	// same way. The pixel for sequence position s is arithmetic on
+	// the block structure, computed in place of the former data,
+	// check, and bit-sequence slices, whose tens-of-kilobyte
+	// transients were the encoder's largest allocations.
+	seqPixel := func(s int) Pixel {
+		switch {
+		case s < dataBits:
+			j, bit := s/8, s%8
+			var orig int
+			if j < nde*nblock {
+				i, b := j/nblock, j%nblock
+				orig = b*nde + i
+				if full := nblock - extra; b > full {
+					orig += b - full
+				}
+			} else {
+				// Byte round nde: only the longer trailing blocks.
+				b := nblock - extra + (j - nde*nblock)
+				orig = b*nde + b - (nblock - extra) + nde
 			}
+			return Data.Pixel() | OffsetPixel(uint(orig*8+bit))
+		case s < dataBits+checkBits:
+			j, bit := (s-dataBits)/8, (s-dataBits)%8
+			i, b := j/nblock, j%nblock
+			return Check.Pixel() | OffsetPixel(uint(dataBits+(b*ne+i)*8+bit))
+		case s < dataBits+checkBits+7:
+			// At most seven remainder pixels pad the sweep.
+			return Extra.Pixel()
 		}
-	}
-	for i := 0; i < ne; i++ {
-		for _, b := range checkList {
-			if i*8 < len(b) {
-				copy(dst, b[i*8:(i+1)*8])
-				dst = dst[8:]
-			}
-		}
-	}
-	if len(dst) != 0 {
 		panic("dst math")
 	}
 
@@ -898,18 +880,16 @@ func lplan(v Version, l Level, p *Plan) error {
 	// Repeat.
 	// See Figure 2 of http://www.pclviewer.com/rs2/qrtopology.htm
 	siz := len(p.Pixel)
-	rem := make([]Pixel, 7)
-	for i := range rem {
-		rem[i] = Extra.Pixel()
-	}
-	src := append(bits, rem...)
+	s := 0
 	for x := siz; x > 0; {
 		for y := siz - 1; y >= 0; y-- {
 			if p.Pixel[y][x-1].Role() == 0 {
-				p.Pixel[y][x-1], src = src[0], src[1:]
+				p.Pixel[y][x-1] = seqPixel(s)
+				s++
 			}
 			if p.Pixel[y][x-2].Role() == 0 {
-				p.Pixel[y][x-2], src = src[0], src[1:]
+				p.Pixel[y][x-2] = seqPixel(s)
+				s++
 			}
 		}
 		x -= 2
@@ -918,13 +898,18 @@ func lplan(v Version, l Level, p *Plan) error {
 		}
 		for y := 0; y < siz; y++ {
 			if p.Pixel[y][x-1].Role() == 0 {
-				p.Pixel[y][x-1], src = src[0], src[1:]
+				p.Pixel[y][x-1] = seqPixel(s)
+				s++
 			}
 			if p.Pixel[y][x-2].Role() == 0 {
-				p.Pixel[y][x-2], src = src[0], src[1:]
+				p.Pixel[y][x-2] = seqPixel(s)
+				s++
 			}
 		}
 		x -= 2
+	}
+	if s < dataBits+checkBits {
+		panic("dst math")
 	}
 	return nil
 }

@@ -175,3 +175,119 @@ func TestPenalty(t *testing.T) {
 		t.Errorf("have proportion penalty %d want %d", got, proportionPenalty)
 	}
 }
+
+// TestLplanPlacement verifies the arithmetic bit placement against a
+// reference that materializes the interleaved sequence the way lplan
+// originally did, across every version and level.
+func TestLplanPlacement(t *testing.T) {
+	for v := Version(MinVersion); v <= MaxVersion; v++ {
+		for _, l := range []Level{L, M, Q, H} {
+			got, err := vplan(v)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := fplan(l, 0, got); err != nil {
+				t.Fatal(err)
+			}
+			if err := lplan(v, l, got); err != nil {
+				t.Fatal(err)
+			}
+
+			want, err := vplan(v)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := fplan(l, 0, want); err != nil {
+				t.Fatal(err)
+			}
+			refLplan(t, v, l, want)
+
+			for y := range want.Pixel {
+				for x := range want.Pixel[y] {
+					if got.Pixel[y][x] != want.Pixel[y][x] {
+						t.Fatalf("version %d level %d: pixel (%d,%d) = %v, want %v",
+							v, l, x, y, got.Pixel[y][x], want.Pixel[y][x])
+					}
+				}
+			}
+		}
+	}
+}
+
+// refLplan is the pre-arithmetic lplan: materialize the data and
+// checksum pixels, split into blocks, interleave, and sweep.
+func refLplan(t *testing.T, v Version, l Level, p *Plan) {
+	t.Helper()
+	nblock := vtab[v].level[l].nblock
+	ne := vtab[v].level[l].check
+	nde := (vtab[v].bytes - ne*nblock) / nblock
+	extra := (vtab[v].bytes - ne*nblock) % nblock
+	dataBits := (nde*nblock + extra) * 8
+	checkBits := ne * nblock * 8
+	p.Level = l
+	p.DataBytes = vtab[v].bytes - ne*nblock
+	p.CheckBytes = ne * nblock
+	p.Blocks = nblock
+
+	data := make([]Pixel, dataBits)
+	for i := range data {
+		data[i] = Data.Pixel() | OffsetPixel(uint(i))
+	}
+	check := make([]Pixel, checkBits)
+	for i := range check {
+		check[i] = Check.Pixel() | OffsetPixel(uint(i+dataBits))
+	}
+	dataList := make([][]Pixel, nblock)
+	checkList := make([][]Pixel, nblock)
+	for i := 0; i < nblock; i++ {
+		nd := nde
+		if i >= nblock-extra {
+			nd++
+		}
+		dataList[i], data = data[0:nd*8], data[nd*8:]
+		checkList[i], check = check[0:ne*8], check[ne*8:]
+	}
+	bits := make([]Pixel, 0, dataBits+checkBits+7)
+	for i := 0; i < nde+1; i++ {
+		for _, b := range dataList {
+			if i*8 < len(b) {
+				bits = append(bits, b[i*8:(i+1)*8]...)
+			}
+		}
+	}
+	for i := 0; i < ne; i++ {
+		for _, b := range checkList {
+			if i*8 < len(b) {
+				bits = append(bits, b[i*8:(i+1)*8]...)
+			}
+		}
+	}
+	for i := 0; i < 7; i++ {
+		bits = append(bits, Extra.Pixel())
+	}
+	src := bits
+	siz := len(p.Pixel)
+	for x := siz; x > 0; {
+		for y := siz - 1; y >= 0; y-- {
+			if p.Pixel[y][x-1].Role() == 0 {
+				p.Pixel[y][x-1], src = src[0], src[1:]
+			}
+			if p.Pixel[y][x-2].Role() == 0 {
+				p.Pixel[y][x-2], src = src[0], src[1:]
+			}
+		}
+		x -= 2
+		if x == 7 {
+			x--
+		}
+		for y := 0; y < siz; y++ {
+			if p.Pixel[y][x-1].Role() == 0 {
+				p.Pixel[y][x-1], src = src[0], src[1:]
+			}
+			if p.Pixel[y][x-2].Role() == 0 {
+				p.Pixel[y][x-2], src = src[0], src[1:]
+			}
+		}
+		x -= 2
+	}
+}
