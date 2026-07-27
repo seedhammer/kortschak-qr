@@ -18,14 +18,17 @@ func TestMasks(t *testing.T) {
 		content string
 		crc     uint32
 	}{
-		{"1", 0x047527ac},   // mask 0.
-		{"db", 0x91042aa9},  // mask 1.
-		{"0", 0xb61726b6},   // mask 2.
-		{"7b9", 0x9a6a83db}, // mask 3.
-		{"3", 0xed14d379},   // mask 4.
-		{"16", 0xe1ce75fa},  // mask 5.
-		{"35", 0x019a2b3a},  // mask 6.
-		{"c", 0x1ec9992d},   // mask 7.
+		// Bitmap CRCs for the packed (size+7)/8 stride; the module
+		// grids are unchanged from the padded-stride layout, verified
+		// pixel-by-pixel via Black() when the stride was fixed.
+		{"1", 0xfbccb55f},   // mask 0.
+		{"db", 0x549b6418},  // mask 1.
+		{"0", 0xd331dc1b},   // mask 2.
+		{"7b9", 0xb1ecc198}, // mask 3.
+		{"3", 0xd8e372e6},   // mask 4.
+		{"16", 0x30fdb989},  // mask 5.
+		{"35", 0x72f3c395},  // mask 6.
+		{"c", 0xe22ac82e},   // mask 7.
 	}
 	for _, test := range tests {
 		qr, err := Encode(test.content, L)
@@ -39,5 +42,18 @@ func TestMasks(t *testing.T) {
 		if got := crc.Sum32(); got != test.crc {
 			t.Errorf("checksum for %q is %x, want %x", test.content, got, test.crc)
 		}
+	}
+}
+
+func TestStride(t *testing.T) {
+	code, err := Encode("STRIDE CHECK", L)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := (code.Size + 7) / 8; code.Stride != want {
+		t.Errorf("Stride = %d, want %d for size %d", code.Stride, want, code.Size)
+	}
+	if want := code.Stride * code.Size; len(code.Bitmap) != want {
+		t.Errorf("len(Bitmap) = %d, want %d", len(code.Bitmap), want)
 	}
 }
