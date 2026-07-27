@@ -36,29 +36,11 @@ func Encode(text string, level Level) (*Code, error) {
 	if err != nil {
 		return nil, err
 	}
-	enc := pickEncoding(text)
-	l := coding.Level(level)
-
-	// Pick appropriate mask.
-	var best *coding.Code
-	lowPenalty := int(^uint(0) >> 1)
-	for m := coding.Mask(0); m <= 7; m++ {
-		// Build and execute plan.
-		p, err := coding.NewPlan(v, l, m)
-		if err != nil {
-			return nil, err
-		}
-		cc, err := p.Encode(enc)
-		if err != nil {
-			return nil, err
-		}
-		if pen := cc.Penalty(); pen < lowPenalty {
-			best = cc
-			lowPenalty = pen
-		}
+	cc, err := coding.Encode(v, coding.Level(level), pickEncoding(text))
+	if err != nil {
+		return nil, err
 	}
-
-	return &Code{best.Bitmap, best.Size, best.Stride, 8}, nil
+	return &Code{cc.Bitmap, cc.Size, cc.Stride, 8}, nil
 }
 
 // MinSize returns the pixel size of the smallest code that holds text

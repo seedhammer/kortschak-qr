@@ -551,6 +551,16 @@ func (b *Bits) AddCheckBytes(v Version, l Level) {
 }
 
 func (p *Plan) Encode(text ...Encoding) (*Code, error) {
+	bytes, err := p.dataBytes(text...)
+	if err != nil {
+		return nil, err
+	}
+	return p.stamp(bytes), nil
+}
+
+// dataBytes encodes text into the plan's data and checksum bytes.
+// The result depends on the version and level alone, not the mask.
+func (p *Plan) dataBytes(text ...Encoding) ([]byte, error) {
 	var b Bits
 	for _, t := range text {
 		if err := t.Check(); err != nil {
@@ -562,10 +572,12 @@ func (p *Plan) Encode(text ...Encoding) (*Code, error) {
 		return nil, fmt.Errorf("cannot encode %d bits into %d-bit code", b.Bits(), p.DataBytes*8)
 	}
 	b.AddCheckBytes(p.Version, p.Level)
-	bytes := b.Bytes()
+	return b.Bytes(), nil
+}
 
-	// Now we have the checksum bytes and the data bytes.
-	// Construct the actual code.
+// stamp constructs the code from the plan's pixel map and the data
+// and checksum bytes.
+func (p *Plan) stamp(bytes []byte) *Code {
 	c := &Code{Size: len(p.Pixel), Stride: (len(p.Pixel) + 7) / 8}
 	c.Bitmap = make([]byte, c.Stride*c.Size)
 	crow := c.Bitmap
@@ -584,7 +596,49 @@ func (p *Plan) Encode(text ...Encoding) (*Code, error) {
 		}
 		crow = crow[c.Stride:]
 	}
-	return c, nil
+	return c
+}
+
+// Encode returns the code for text at the given version and level,
+// masked with the lowest-penalty mask. The pixel plan and the data
+// bytes are built once and re-masked in place per candidate, where
+// NewPlan plus Plan.Encode per mask rebuilds both eight times over:
+// the mask only overwrites the format pixels (fplan) and toggles a
+// self-inverse XOR on the data pixels (mplan).
+func Encode(version Version, level Level, text ...Encoding) (*Code, error) {
+	p, err := vplan(version)
+	if err != nil {
+		return nil, err
+	}
+	if err := fplan(level, 0, p); err != nil {
+		return nil, err
+	}
+	if err := lplan(version, level, p); err != nil {
+		return nil, err
+	}
+	bytes, err := p.dataBytes(text...)
+	if err != nil {
+		return nil, err
+	}
+	var best *Code
+	lowPenalty := int(^uint(0) >> 1)
+	for m := Mask(0); m <= 7; m++ {
+		if err := fplan(level, m, p); err != nil {
+			return nil, err
+		}
+		if err := mplan(m, p); err != nil {
+			return nil, err
+		}
+		c := p.stamp(bytes)
+		if pen := c.Penalty(); pen < lowPenalty {
+			best, lowPenalty = c, pen
+		}
+		// Unmask: mplan's XOR is its own inverse.
+		if err := mplan(m, p); err != nil {
+			return nil, err
+		}
+	}
+	return best, nil
 }
 
 // A version describes metadata associated with a version.
