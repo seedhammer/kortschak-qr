@@ -45,6 +45,38 @@ func TestMasks(t *testing.T) {
 	}
 }
 
+func TestMinSize(t *testing.T) {
+	// MinSize must agree with the size Encode actually produces,
+	// across version boundaries and encoding classes.
+	texts := []string{
+		"1234567890",
+		"HELLO WORLD 123",
+		"wsh(sortedmulti(2,xpub,xpub))",
+	}
+	for n := 8; n <= 2048; n *= 2 {
+		texts = append(texts, string(make([]byte, n)))
+	}
+	for _, text := range texts {
+		if text == "" {
+			continue
+		}
+		for _, level := range []Level{L, M, Q, H} {
+			want, err := Encode(text, level)
+			if err != nil {
+				continue
+			}
+			got, err := MinSize(text, level)
+			if err != nil {
+				t.Errorf("MinSize(%d bytes, %v): %v", len(text), level, err)
+				continue
+			}
+			if got != want.Size {
+				t.Errorf("MinSize(%d bytes, %v) = %d, Encode size %d", len(text), level, got, want.Size)
+			}
+		}
+	}
+}
+
 func TestStride(t *testing.T) {
 	code, err := Encode("STRIDE CHECK", L)
 	if err != nil {

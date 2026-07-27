@@ -32,30 +32,12 @@ const (
 
 // Encode returns an encoding of text at the given error correction level.
 func Encode(text string, level Level) (*Code, error) {
-	// Pick data encoding, smallest first.
-	// We could split the string and use different encodings
-	// but that seems like overkill for now.
-	var enc coding.Encoding
-	switch {
-	case coding.Num(text).Check() == nil:
-		enc = coding.Num(text)
-	case coding.Alpha(text).Check() == nil:
-		enc = coding.Alpha(text)
-	default:
-		enc = coding.String(text)
+	v, err := minVersion(text, level)
+	if err != nil {
+		return nil, err
 	}
-
-	// Pick size.
+	enc := pickEncoding(text)
 	l := coding.Level(level)
-	var v coding.Version
-	for v = coding.MinVersion; ; v++ {
-		if v > coding.MaxVersion {
-			return nil, errors.New("text too long to encode as QR")
-		}
-		if enc.Bits(v) <= v.DataBytes(l)*8 {
-			break
-		}
-	}
 
 	// Pick appropriate mask.
 	var best *coding.Code
@@ -77,6 +59,48 @@ func Encode(text string, level Level) (*Code, error) {
 	}
 
 	return &Code{best.Bitmap, best.Size, best.Stride, 8}, nil
+}
+
+// MinSize returns the pixel size of the smallest code that holds text
+// at the given error correction level, without building the code. It
+// costs a capacity scan instead of Encode's full plan construction,
+// for callers that lay out space for a code before committing to the
+// expense of encoding it.
+func MinSize(text string, level Level) (int, error) {
+	v, err := minVersion(text, level)
+	if err != nil {
+		return 0, err
+	}
+	return 17 + int(v)*4, nil
+}
+
+// pickEncoding returns the smallest data encoding for text. We could
+// split the string and use different encodings but that seems like
+// overkill for now.
+func pickEncoding(text string) coding.Encoding {
+	switch {
+	case coding.Num(text).Check() == nil:
+		return coding.Num(text)
+	case coding.Alpha(text).Check() == nil:
+		return coding.Alpha(text)
+	default:
+		return coding.String(text)
+	}
+}
+
+// minVersion returns the smallest version whose capacity holds text
+// at the given error correction level.
+func minVersion(text string, level Level) (coding.Version, error) {
+	enc := pickEncoding(text)
+	l := coding.Level(level)
+	for v := coding.Version(coding.MinVersion); ; v++ {
+		if v > coding.MaxVersion {
+			return 0, errors.New("text too long to encode as QR")
+		}
+		if enc.Bits(v) <= v.DataBytes(l)*8 {
+			return v, nil
+		}
+	}
 }
 
 // A Code is a square pixel grid.
