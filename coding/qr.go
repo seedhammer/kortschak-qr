@@ -814,7 +814,10 @@ func lplan(v Version, l Level, p *Plan) error {
 
 	// Build up bit sequence, taking first byte of each block,
 	// then second byte, and so on.  Then checksums.
-	bits := make([]Pixel, dataBits+checkBits)
+	// Capacity for the 7 remainder pixels appended below, so the
+	// append reuses this backing array instead of reallocating the
+	// full sequence.
+	bits := make([]Pixel, dataBits+checkBits, dataBits+checkBits+7)
 	dst := bits
 	for i := 0; i < nde+1; i++ {
 		for _, b := range dataList {
